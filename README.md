@@ -17,7 +17,7 @@ If any error is encountered, it immediately quits! If a record is unable to be c
 
 ## Running
 
-mvn something -c config.json
+Create a valid config.json and run using `mvn exec:exec`.
 
 ## Config
 

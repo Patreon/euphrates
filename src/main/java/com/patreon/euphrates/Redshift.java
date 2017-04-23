@@ -57,7 +57,7 @@ public class Redshift {
           config.s3.accessKey,
           config.s3.secretKey)
           + String.format(
-          "json 's3://%s/%s' gzip TIMEFORMAT AS 'auto' TRUNCATECOLUMNS MANIFEST",
+          "json 's3://%s/%s' gzip TIMEFORMAT AS 'auto' ACCEPTANYDATE TRUNCATECOLUMNS MANIFEST",
           config.s3.bucket,
           Util.formatKey(table));
 

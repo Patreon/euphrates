@@ -74,6 +74,7 @@ public class StreamParser {
               case "table_data":
                 enqueueCurrentRows();
                 table = null;
+                break;
               case "row":
                 if (valueCount != 0)
                   throw new RuntimeException(

@@ -43,7 +43,7 @@ public class StreamParser {
       int columnIndex = -1;
       int valueCount = -1;
       int size = 0;
-      String currentValue = null;
+      StringBuilder currentValue = new StringBuilder();
       while (reader.hasNext()) {
         int type = reader.next();
         switch (type) {
@@ -88,8 +88,8 @@ public class StreamParser {
                 break;
               case "field":
                 if (columnIndex != -1) {
-                  currentRow.set(columnIndex, currentValue);
-                  currentValue = null;
+                  currentRow.set(columnIndex, currentValue.toString());
+                  currentValue = new StringBuilder();
                   valueCount--;
                   columnIndex = -1;
                 }
@@ -98,11 +98,7 @@ public class StreamParser {
             break;
           case XMLStreamReader.CHARACTERS:
             if (columnIndex != -1) {
-              if (currentValue == null) {
-                currentValue = reader.getText();
-              } else {
-                currentValue += reader.getText();
-              }
+              currentValue.append(reader.getText());
             }
             break;
         }

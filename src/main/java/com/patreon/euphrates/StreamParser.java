@@ -79,7 +79,7 @@ public class StreamParser {
                 if (valueCount != 0)
                   throw new RuntimeException(
                                               String.format(
-                                                "value count was expected to be 0, was instead %s", valueCount));
+                                                "value count was expected to be 0, was instead %s for table %s", valueCount, table.name));
                 size += currentRow.stream().mapToInt(v -> v == null ? 4 : v.length()).sum();
                 if (size > replicator.getConfig().s3.minimumSegmentSize) {
                   enqueueCurrentRows();

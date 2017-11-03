@@ -14,6 +14,7 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.GZIPOutputStream;
 
 public class S3Writer {
@@ -25,6 +26,7 @@ public class S3Writer {
   ThreadPoolExecutor uploader;
   ExecutorService copier;
   ConcurrentHashMap<String, BlockingQueue<CopyJob>> copyQueues = new ConcurrentHashMap<>();
+  ConcurrentHashMap<String, ReentrantLock> tableCopyLocks = new ConcurrentHashMap<>();
 
   public S3Writer(Replicator replicator) {
     this.replicator = replicator;
@@ -33,11 +35,15 @@ public class S3Writer {
     this.copier = Executors.newFixedThreadPool(replicator.getConfig().redshift.maxConnections);
     for (Config.Table table : replicator.getConfig().tables) {
       copyQueues.put(table.name, new LinkedBlockingQueue<>(PER_TABLE_QUEUE_SIZE));
+
+      // We only allow 1 copy worker at a time to be copying to a given table, so we maintain this mapping.
+      tableCopyLocks.put(table.name, new ReentrantLock());
+
       uploadFormat(table);
     }
 
     for (int i = 0; i != replicator.getConfig().redshift.maxConnections; i++) {
-      this.copier.submit(new CopyWorker(this, copyQueues));
+      this.copier.submit(new CopyWorker(this, copyQueues, tableCopyLocks));
     }
     this.uploader =
       new ThreadPoolExecutor(1, 100, 30L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(20));
@@ -128,19 +134,32 @@ public class S3Writer {
     Replicator replicator;
     Config.Table table;
     ConcurrentHashMap<String, BlockingQueue<CopyJob>> queues;
+    ConcurrentHashMap<String, ReentrantLock> tableCopyLocks;
 
-    CopyWorker(S3Writer s3Writer, ConcurrentHashMap<String, BlockingQueue<CopyJob>> queues) {
+    CopyWorker(S3Writer s3Writer, ConcurrentHashMap<String, BlockingQueue<CopyJob>> queues, ConcurrentHashMap<String, ReentrantLock> tableCopyLocks) {
       this.s3Writer = s3Writer;
       this.replicator = s3Writer.getReplicator();
       this.queues = queues;
+      this.tableCopyLocks = tableCopyLocks;
     }
 
     public void run() {
+      String currentTableName = null;
+      ReentrantLock currentTableLock = null;
+
       while (true) {
         for (ConcurrentHashMap.Entry<String, BlockingQueue<CopyJob>> copyEntry :
           queues.entrySet()) {
           try {
+            currentTableName = copyEntry.getKey();
             BlockingQueue<CopyJob> queue = copyEntry.getValue();
+
+            currentTableLock = tableCopyLocks.get(currentTableName);
+            if (!currentTableLock.tryLock(1, TimeUnit.SECONDS)) {
+              LOG.debug("Unable to acquire lock for table {}, so going to process other queues", currentTableName);
+              continue;
+            }
+
             // wait a second to take an item
             CopyJob firstJob = queue.poll(1L, TimeUnit.SECONDS);
             // when there is no item, go to the next entry in the loop
@@ -189,6 +208,10 @@ public class S3Writer {
             return; // do nothing and return
           } catch (Exception e) {
             App.fatal(e);
+          } finally {
+            if (currentTableLock != null && currentTableLock.isHeldByCurrentThread()) {
+              currentTableLock.unlock();
+            }
           }
         }
       }

@@ -144,42 +144,38 @@ public class S3Writer {
     }
 
     public void run() {
-      String currentTableName = null;
-      ReentrantLock currentTableLock = null;
-
       while (true) {
-        for (ConcurrentHashMap.Entry<String, BlockingQueue<CopyJob>> copyEntry :
-          queues.entrySet()) {
+        for (ConcurrentHashMap.Entry<String, BlockingQueue<CopyJob>> copyEntry : queues.entrySet()) {
           try {
-            currentTableName = copyEntry.getKey();
+            String currentTableName = copyEntry.getKey();
             BlockingQueue<CopyJob> queue = copyEntry.getValue();
 
-            currentTableLock = tableCopyLocks.get(currentTableName);
+            ReentrantLock currentTableLock = tableCopyLocks.get(currentTableName);
             if (!currentTableLock.tryLock()) {
               LOG.debug("Unable to acquire lock for table {}, so going to process other queues", currentTableName);
               continue;
             }
 
-            // wait a second to take an item
-            CopyJob firstJob = queue.poll(1L, TimeUnit.SECONDS);
-            // when there is no item, go to the next entry in the loop
-            if (firstJob == null) continue;
+            try {
+              // wait a second to take an item
+              CopyJob firstJob = queue.poll(1L, TimeUnit.SECONDS);
+              // when there is no item, go to the next entry in the loop
+              if (firstJob == null) continue;
 
-            Config.Table table = firstJob.getTable();
-            ArrayList<CopyJob> jobs = new ArrayList<>();
-            jobs.add(firstJob);
-            // drain up to 9 more for 10 in total
-            queue.drainTo(jobs, 9);
+              Config.Table table = firstJob.getTable();
+              ArrayList<CopyJob> jobs = new ArrayList<>();
+              jobs.add(firstJob);
+              // drain up to 9 more for 10 in total
+              queue.drainTo(jobs, 9);
 
-            processJobs(table, jobs);
+              processJobs(table, jobs);
+            } finally {
+              currentTableLock.unlock();
+            }
           } catch (InterruptedException ie) {
             return; // do nothing and return
           } catch (Exception e) {
             App.fatal(e);
-          } finally {
-            if (currentTableLock != null && currentTableLock.isHeldByCurrentThread()) {
-              currentTableLock.unlock();
-            }
           }
         }
       }

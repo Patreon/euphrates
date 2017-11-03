@@ -105,7 +105,7 @@
           <configuration>
             <executable>java</executable>
             <arguments>
-              <argument>-Xmx8192m</argument>
+              <argument>-Xmx12288m</argument>
               <argument>-classpath</argument>
               <!-- automatically creates the classpath using all project dependencies,
                    also adding the project build directory -->

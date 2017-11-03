@@ -155,7 +155,7 @@ public class S3Writer {
             BlockingQueue<CopyJob> queue = copyEntry.getValue();
 
             currentTableLock = tableCopyLocks.get(currentTableName);
-            if (!currentTableLock.tryLock(1, TimeUnit.SECONDS)) {
+            if (!currentTableLock.tryLock()) {
               LOG.debug("Unable to acquire lock for table {}, so going to process other queues", currentTableName);
               continue;
             }

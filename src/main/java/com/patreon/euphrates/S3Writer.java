@@ -3,6 +3,7 @@ package com.patreon.euphrates;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.DeleteObjectRequest;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafixes.concurrency.ReusableCountLatch;
 import org.slf4j.Logger;
@@ -132,7 +133,6 @@ public class S3Writer {
 
     S3Writer s3Writer;
     Replicator replicator;
-    Config.Table table;
     ConcurrentHashMap<String, BlockingQueue<CopyJob>> queues;
     ConcurrentHashMap<String, ReentrantLock> tableCopyLocks;
 
@@ -170,40 +170,8 @@ public class S3Writer {
             jobs.add(firstJob);
             // drain up to 9 more for 10 in total
             queue.drainTo(jobs, 9);
-            String manifestId = UUID.randomUUID().toString();
-            String manifestPath = String.format("%s/manifest-%s.json", table.name, manifestId);
-            HashMap<String, ArrayList<HashMap<String, Object>>> manifest = new HashMap<>();
-            ArrayList<HashMap<String, Object>> entries = new ArrayList<>();
-            for (CopyJob job : jobs) {
-              HashMap<String, Object> entry = new HashMap<>();
-              entry.put("mandatory", new Boolean(true));
-              entry.put(
-                "url",
-                String.format("s3://%s/%s", replicator.getConfig().s3.bucket, job.getKey()));
-              entries.add(entry);
-            }
-            manifest.put("entries", entries);
-            ObjectMapper mapper = new ObjectMapper();
-            s3Writer
-              .getClient()
-              .putObject(
-                replicator.getConfig().s3.bucket,
-                manifestPath,
-                mapper.writeValueAsString(manifest));
 
-            LOG.info(String.format("trying %s with %s size manifest", table.name, jobs.size()));
-            replicator.getRedshift().copyManifestPath(table, manifestPath);
-            for (CopyJob job : jobs) {
-              job.getFinished().decrement();
-              s3Writer
-                .getClient()
-                .deleteObject(
-                  new DeleteObjectRequest(replicator.getConfig().s3.bucket, job.getKey()));
-            }
-            s3Writer
-              .getClient()
-              .deleteObject(
-                new DeleteObjectRequest(replicator.getConfig().s3.bucket, manifestPath));
+            processJobs(table, jobs);
           } catch (InterruptedException ie) {
             return; // do nothing and return
           } catch (Exception e) {
@@ -215,6 +183,43 @@ public class S3Writer {
           }
         }
       }
+    }
+
+    private void processJobs(Config.Table table, ArrayList<CopyJob> jobs) throws JsonProcessingException{
+      String manifestId = UUID.randomUUID().toString();
+      String manifestPath = String.format("%s/manifest-%s.json", table.name, manifestId);
+      HashMap<String, ArrayList<HashMap<String, Object>>> manifest = new HashMap<>();
+      ArrayList<HashMap<String, Object>> entries = new ArrayList<>();
+      for (CopyJob job : jobs) {
+        HashMap<String, Object> entry = new HashMap<>();
+        entry.put("mandatory", new Boolean(true));
+        entry.put(
+                "url",
+                String.format("s3://%s/%s", replicator.getConfig().s3.bucket, job.getKey()));
+        entries.add(entry);
+      }
+      manifest.put("entries", entries);
+      ObjectMapper mapper = new ObjectMapper();
+      s3Writer
+              .getClient()
+              .putObject(
+                      replicator.getConfig().s3.bucket,
+                      manifestPath,
+                      mapper.writeValueAsString(manifest));
+
+      LOG.info(String.format("trying %s with %s size manifest", table.name, jobs.size()));
+      replicator.getRedshift().copyManifestPath(table, manifestPath);
+      for (CopyJob job : jobs) {
+        job.getFinished().decrement();
+        s3Writer
+                .getClient()
+                .deleteObject(
+                        new DeleteObjectRequest(replicator.getConfig().s3.bucket, job.getKey()));
+      }
+      s3Writer
+              .getClient()
+              .deleteObject(
+                      new DeleteObjectRequest(replicator.getConfig().s3.bucket, manifestPath));
     }
   }
 

@@ -110,6 +110,7 @@
               <!-- automatically creates the classpath using all project dependencies,
                    also adding the project build directory -->
               <classpath/>
+              <argument>-XX:+HeapDumpOnOutOfMemoryError</argument>
               <argument>com.patreon.euphrates.App</argument>
             </arguments>
           </configuration>

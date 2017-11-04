@@ -21,7 +21,7 @@ import java.util.zip.GZIPOutputStream;
 public class S3Writer {
 
   private static final Logger LOG = LoggerFactory.getLogger(S3Writer.class);
-  private static final int TABLE_QUEUE_SIZE = 10000;
+  private static final int TABLE_QUEUE_SIZE = 20000;
   AmazonS3 client;
   Replicator replicator;
   ThreadPoolExecutor uploader;

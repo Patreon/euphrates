@@ -21,25 +21,28 @@ import java.util.zip.GZIPOutputStream;
 public class S3Writer {
 
   private static final Logger LOG = LoggerFactory.getLogger(S3Writer.class);
-  private static final int PER_TABLE_QUEUE_SIZE = 1000;
+  private static final int TABLE_QUEUE_SIZE = 10000;
   AmazonS3 client;
   Replicator replicator;
   ThreadPoolExecutor uploader;
   ExecutorService copier;
   ConcurrentHashMap<String, BlockingQueue<CopyJob>> copyQueues = new ConcurrentHashMap<>();
   ConcurrentHashMap<String, ReentrantLock> tableCopyLocks = new ConcurrentHashMap<>();
+  int queueSum;
 
   public S3Writer(Replicator replicator) {
     this.replicator = replicator;
     this.client =
       AmazonS3ClientBuilder.standard().withRegion(replicator.getConfig().s3.region).build();
     this.copier = Executors.newFixedThreadPool(replicator.getConfig().redshift.maxConnections);
+    int queueSize = TABLE_QUEUE_SIZE / replicator.getConfig().tables.size();
+    queueSum = queueSize * replicator.getConfig().tables.size();
+
     for (Config.Table table : replicator.getConfig().tables) {
-      copyQueues.put(table.name, new LinkedBlockingQueue<>(PER_TABLE_QUEUE_SIZE));
+      copyQueues.put(table.name, new LinkedBlockingQueue<>(queueSize));
 
       // We only allow 1 copy worker at a time to be copying to a given table, so we maintain this mapping.
       tableCopyLocks.put(table.name, new ReentrantLock());
-
       uploadFormat(table);
     }
 
@@ -47,7 +50,7 @@ public class S3Writer {
       this.copier.submit(new CopyWorker(this, copyQueues, tableCopyLocks));
     }
     this.uploader =
-      new ThreadPoolExecutor(1, 100, 30L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(20));
+      new ThreadPoolExecutor(1, 100, 30L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(20));
   }
 
   public void shutdown() {
@@ -91,9 +94,9 @@ public class S3Writer {
   }
 
   protected int getCopyQueueSum() {
-    return Collections.list(copyQueues.elements())
+    return queueSum - Collections.list(copyQueues.elements())
              .stream()
-             .mapToInt(v -> PER_TABLE_QUEUE_SIZE - v.remainingCapacity())
+             .mapToInt(v -> v.remainingCapacity())
              .sum();
   }
 

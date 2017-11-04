@@ -155,7 +155,6 @@ public class S3Writer {
 
             ReentrantLock currentTableLock = tableCopyLocks.get(currentTableName);
             if (!currentTableLock.tryLock()) {
-              LOG.debug("Unable to acquire lock for table {}, so going to process other queues", currentTableName);
               continue;
             }
 
@@ -206,7 +205,7 @@ public class S3Writer {
                       manifestPath,
                       mapper.writeValueAsString(manifest));
 
-      LOG.info(String.format("trying %s with %s size manifest", table.name, jobs.size()));
+      LOG.info(String.format("copying to %s with %s segments", table.name, jobs.size()));
       replicator.getRedshift().copyManifestPath(table, manifestPath);
       for (CopyJob job : jobs) {
         job.getFinished().decrement();

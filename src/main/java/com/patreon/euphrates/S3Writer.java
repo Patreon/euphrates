@@ -257,6 +257,7 @@ public class S3Writer {
         }
         writer.flush();
         writer.close();
+        rows.clear();
         LOG.debug(String.format("closing %s", file));
         String key = String.format("%s/%s.json.gz", table.name, id);
         s3Writer.getClient().putObject(replicator.getConfig().s3.bucket, key, file);

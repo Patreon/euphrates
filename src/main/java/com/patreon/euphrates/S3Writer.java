@@ -3,6 +3,7 @@ package com.patreon.euphrates;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.DeleteObjectRequest;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafixes.concurrency.ReusableCountLatch;
 import org.slf4j.Logger;
@@ -14,33 +15,42 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.zip.GZIPOutputStream;
 
 public class S3Writer {
 
   private static final Logger LOG = LoggerFactory.getLogger(S3Writer.class);
-  private static final int PER_TABLE_QUEUE_SIZE = 1000;
+  private static final int TABLE_QUEUE_SIZE = 20000;
   AmazonS3 client;
   Replicator replicator;
   ThreadPoolExecutor uploader;
   ExecutorService copier;
   ConcurrentHashMap<String, BlockingQueue<CopyJob>> copyQueues = new ConcurrentHashMap<>();
+  ConcurrentHashMap<String, ReentrantLock> tableCopyLocks = new ConcurrentHashMap<>();
+  int queueSum;
 
   public S3Writer(Replicator replicator) {
     this.replicator = replicator;
     this.client =
       AmazonS3ClientBuilder.standard().withRegion(replicator.getConfig().s3.region).build();
     this.copier = Executors.newFixedThreadPool(replicator.getConfig().redshift.maxConnections);
+    int queueSize = TABLE_QUEUE_SIZE / replicator.getConfig().tables.size();
+    queueSum = queueSize * replicator.getConfig().tables.size();
+
     for (Config.Table table : replicator.getConfig().tables) {
-      copyQueues.put(table.name, new LinkedBlockingQueue<>(PER_TABLE_QUEUE_SIZE));
+      copyQueues.put(table.name, new LinkedBlockingQueue<>(queueSize));
+
+      // We only allow 1 copy worker at a time to be copying to a given table, so we maintain this mapping.
+      tableCopyLocks.put(table.name, new ReentrantLock());
       uploadFormat(table);
     }
 
     for (int i = 0; i != replicator.getConfig().redshift.maxConnections; i++) {
-      this.copier.submit(new CopyWorker(this, copyQueues));
+      this.copier.submit(new CopyWorker(this, copyQueues, tableCopyLocks));
     }
     this.uploader =
-      new ThreadPoolExecutor(1, 100, 30L, TimeUnit.SECONDS, new LinkedBlockingQueue<>(20));
+      new ThreadPoolExecutor(1, 100, 30L, TimeUnit.SECONDS, new ArrayBlockingQueue<>(20));
   }
 
   public void shutdown() {
@@ -84,9 +94,9 @@ public class S3Writer {
   }
 
   protected int getCopyQueueSum() {
-    return Collections.list(copyQueues.elements())
+    return queueSum - Collections.list(copyQueues.elements())
              .stream()
-             .mapToInt(v -> PER_TABLE_QUEUE_SIZE - v.remainingCapacity())
+             .mapToInt(v -> v.remainingCapacity())
              .sum();
   }
 
@@ -126,65 +136,44 @@ public class S3Writer {
 
     S3Writer s3Writer;
     Replicator replicator;
-    Config.Table table;
     ConcurrentHashMap<String, BlockingQueue<CopyJob>> queues;
+    ConcurrentHashMap<String, ReentrantLock> tableCopyLocks;
 
-    CopyWorker(S3Writer s3Writer, ConcurrentHashMap<String, BlockingQueue<CopyJob>> queues) {
+    CopyWorker(S3Writer s3Writer, ConcurrentHashMap<String, BlockingQueue<CopyJob>> queues, ConcurrentHashMap<String, ReentrantLock> tableCopyLocks) {
       this.s3Writer = s3Writer;
       this.replicator = s3Writer.getReplicator();
       this.queues = queues;
+      this.tableCopyLocks = tableCopyLocks;
     }
 
     public void run() {
       while (true) {
-        for (ConcurrentHashMap.Entry<String, BlockingQueue<CopyJob>> copyEntry :
-          queues.entrySet()) {
+        for (ConcurrentHashMap.Entry<String, BlockingQueue<CopyJob>> copyEntry : queues.entrySet()) {
           try {
+            String currentTableName = copyEntry.getKey();
             BlockingQueue<CopyJob> queue = copyEntry.getValue();
-            // wait a second to take an item
-            CopyJob firstJob = queue.poll(1L, TimeUnit.SECONDS);
-            // when there is no item, go to the next entry in the loop
-            if (firstJob == null) continue;
 
-            Config.Table table = firstJob.getTable();
-            ArrayList<CopyJob> jobs = new ArrayList<>();
-            jobs.add(firstJob);
-            // drain up to 9 more for 10 in total
-            queue.drainTo(jobs, 9);
-            String manifestId = UUID.randomUUID().toString();
-            String manifestPath = String.format("%s/manifest-%s.json", table.name, manifestId);
-            HashMap<String, ArrayList<HashMap<String, Object>>> manifest = new HashMap<>();
-            ArrayList<HashMap<String, Object>> entries = new ArrayList<>();
-            for (CopyJob job : jobs) {
-              HashMap<String, Object> entry = new HashMap<>();
-              entry.put("mandatory", new Boolean(true));
-              entry.put(
-                "url",
-                String.format("s3://%s/%s", replicator.getConfig().s3.bucket, job.getKey()));
-              entries.add(entry);
+            ReentrantLock currentTableLock = tableCopyLocks.get(currentTableName);
+            if (!currentTableLock.tryLock()) {
+              continue;
             }
-            manifest.put("entries", entries);
-            ObjectMapper mapper = new ObjectMapper();
-            s3Writer
-              .getClient()
-              .putObject(
-                replicator.getConfig().s3.bucket,
-                manifestPath,
-                mapper.writeValueAsString(manifest));
 
-            LOG.info(String.format("trying %s with %s size manifest", table.name, jobs.size()));
-            replicator.getRedshift().copyManifestPath(table, manifestPath);
-            for (CopyJob job : jobs) {
-              job.getFinished().decrement();
-              s3Writer
-                .getClient()
-                .deleteObject(
-                  new DeleteObjectRequest(replicator.getConfig().s3.bucket, job.getKey()));
+            try {
+              // wait a second to take an item
+              CopyJob firstJob = queue.poll(1L, TimeUnit.SECONDS);
+              // when there is no item, go to the next entry in the loop
+              if (firstJob == null) continue;
+
+              Config.Table table = firstJob.getTable();
+              ArrayList<CopyJob> jobs = new ArrayList<>();
+              jobs.add(firstJob);
+              // drain up to 9 more for 10 in total
+              queue.drainTo(jobs, 9);
+
+              processJobs(table, jobs);
+            } finally {
+              currentTableLock.unlock();
             }
-            s3Writer
-              .getClient()
-              .deleteObject(
-                new DeleteObjectRequest(replicator.getConfig().s3.bucket, manifestPath));
           } catch (InterruptedException ie) {
             return; // do nothing and return
           } catch (Exception e) {
@@ -192,6 +181,43 @@ public class S3Writer {
           }
         }
       }
+    }
+
+    private void processJobs(Config.Table table, ArrayList<CopyJob> jobs) throws JsonProcessingException{
+      String manifestId = UUID.randomUUID().toString();
+      String manifestPath = String.format("%s/manifest-%s.json", table.name, manifestId);
+      HashMap<String, ArrayList<HashMap<String, Object>>> manifest = new HashMap<>();
+      ArrayList<HashMap<String, Object>> entries = new ArrayList<>();
+      for (CopyJob job : jobs) {
+        HashMap<String, Object> entry = new HashMap<>();
+        entry.put("mandatory", new Boolean(true));
+        entry.put(
+                "url",
+                String.format("s3://%s/%s", replicator.getConfig().s3.bucket, job.getKey()));
+        entries.add(entry);
+      }
+      manifest.put("entries", entries);
+      ObjectMapper mapper = new ObjectMapper();
+      s3Writer
+              .getClient()
+              .putObject(
+                      replicator.getConfig().s3.bucket,
+                      manifestPath,
+                      mapper.writeValueAsString(manifest));
+
+      LOG.info(String.format("copying to %s with %s segments", table.name, jobs.size()));
+      replicator.getRedshift().copyManifestPath(table, manifestPath);
+      for (CopyJob job : jobs) {
+        job.getFinished().decrement();
+        s3Writer
+                .getClient()
+                .deleteObject(
+                        new DeleteObjectRequest(replicator.getConfig().s3.bucket, job.getKey()));
+      }
+      s3Writer
+              .getClient()
+              .deleteObject(
+                      new DeleteObjectRequest(replicator.getConfig().s3.bucket, manifestPath));
     }
   }
 
@@ -231,6 +257,7 @@ public class S3Writer {
         }
         writer.flush();
         writer.close();
+        rows.clear();
         LOG.debug(String.format("closing %s", file));
         String key = String.format("%s/%s.json.gz", table.name, id);
         s3Writer.getClient().putObject(replicator.getConfig().s3.bucket, key, file);

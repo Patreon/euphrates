@@ -25,7 +25,7 @@ public class StreamParser {
   Map<String, Integer> columnMap = new HashMap<>();
   CountDownLatch started = new CountDownLatch(1);
   ReusableCountLatch finished = new ReusableCountLatch();
-  List<List<String>> rows = new ArrayList<>();
+  S3Writer.RowEnqueuer rows = null;
   int rowIndex = 0;
 
   public StreamParser(Replicator replicator) {
@@ -52,6 +52,7 @@ public class StreamParser {
               case "table_data":
                 String tableName = reader.getAttributeValue(null, "name");
                 table = replicator.getTable(tableName);
+                rows = replicator.getS3Writer().getRowEnqueuer(table, finished);
                 populateColumnMap();
                 break;
               case "field":
@@ -63,7 +64,6 @@ public class StreamParser {
                 for (int i = 0, len = columnMap.size(); i != len; i++) {
                   currentRow.add(null);
                 }
-                rows.add(currentRow);
                 rowIndex++;
                 valueCount = columnMap.size();
                 break;
@@ -76,6 +76,7 @@ public class StreamParser {
                 table = null;
                 break;
               case "row":
+                rows.add(currentRow);
                 if (valueCount != 0)
                   throw new RuntimeException(
                                               String.format(
@@ -124,8 +125,8 @@ public class StreamParser {
 
   private void enqueueCurrentRows() {
     LOG.info(String.format("enqueuing %s at index %s", table.name, rowIndex));
-    replicator.getS3Writer().enqueueRows(table, rows, finished);
-    rows = new ArrayList<>();
+    rows.finish();
+    rows = replicator.getS3Writer().getRowEnqueuer(table, finished);
     // register before counting down the started latch
     finished.increment();
     started.countDown();

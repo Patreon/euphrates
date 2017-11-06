@@ -58,34 +58,8 @@ public class S3Writer {
     copier.shutdownNow();
   }
 
-  public void enqueueRows(
-                           Config.Table table, List<List<String>> rows, ReusableCountLatch finished) {
-    LOG.info(
-      String.format(
-        "enqueueRows %s currently at %s/%s",
-        table.name,
-        this.uploader.getQueue().remainingCapacity(),
-        getCopyQueueSum()));
-    this.uploader.execute(new UploadJob(this, table, rows, finished));
-  }
-
-  private void uploadFormat(Config.Table table) {
-    try {
-      int position = 0;
-      Map<String, List<String>> jsonpaths = new HashMap<>();
-      List<String> paths = new ArrayList<>();
-      jsonpaths.put("jsonpaths", paths);
-      for (Map.Entry<String, String> column : table.columns.entrySet()) {
-        paths.add(String.format("$[%s]", position));
-        position++;
-      }
-      String formatPath = Util.formatKey(table);
-      ObjectMapper mapper = new ObjectMapper();
-      client.putObject(
-        replicator.getConfig().s3.bucket, formatPath, mapper.writeValueAsString(jsonpaths));
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
+  public S3Writer.RowEnqueuer getRowEnqueuer(Config.Table table, ReusableCountLatch finished) {
+    return new RowEnqueuer(this, table, finished);
   }
 
   protected void enqueueKey(Config.Table table, String key, ReusableCountLatch finished) {
@@ -106,6 +80,29 @@ public class S3Writer {
 
   protected AmazonS3 getClient() {
     return client;
+  }
+
+  protected ThreadPoolExecutor getUploader() {
+    return uploader;
+  }
+
+  private void uploadFormat(Config.Table table) {
+    try {
+      int position = 0;
+      Map<String, List<String>> jsonpaths = new HashMap<>();
+      List<String> paths = new ArrayList<>();
+      jsonpaths.put("jsonpaths", paths);
+      for (Map.Entry<String, String> column : table.columns.entrySet()) {
+        paths.add(String.format("$[%s]", position));
+        position++;
+      }
+      String formatPath = Util.formatKey(table);
+      ObjectMapper mapper = new ObjectMapper();
+      client.putObject(
+        replicator.getConfig().s3.bucket, formatPath, mapper.writeValueAsString(jsonpaths));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   class CopyJob {
@@ -129,6 +126,51 @@ public class S3Writer {
 
     ReusableCountLatch getFinished() {
       return finished;
+    }
+  }
+
+  class RowEnqueuer {
+    S3Writer writer;
+    Config.Table table;
+    ReusableCountLatch finished;
+    File file;
+    Writer fileWriter;
+    ObjectMapper mapper;
+
+    RowEnqueuer(S3Writer writer, Config.Table table, ReusableCountLatch finished) {
+      this.writer = writer;
+      this.table = table;
+      this.finished = finished;
+
+      try {
+        String id = UUID.randomUUID().toString();
+        file = new File("/tmp/" + id + ".json.gz");
+        mapper = new ObjectMapper();
+        fileWriter =
+            new OutputStreamWriter(new GZIPOutputStream(new FileOutputStream(file)), "UTF-8");
+        file.deleteOnExit();
+      } catch (Exception e) {
+        App.fatal(e);
+      }
+    }
+
+    public void add(List<String> row) {
+      try {
+        fileWriter.write(mapper.writeValueAsString(row));
+        fileWriter.write("\n");
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+    }
+
+    public void finish() {
+      try {
+        fileWriter.flush();
+        fileWriter.close();
+        writer.getUploader().execute(new UploadJob(writer, table, file.getPath(), finished));
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
     }
   }
 
@@ -222,46 +264,31 @@ public class S3Writer {
   }
 
   class UploadJob implements Runnable {
-
-    String id;
     Replicator replicator;
     S3Writer s3Writer;
     Config.Table table;
-    List<List<String>> rows;
+    String path;
     ReusableCountLatch finished;
 
     public UploadJob(
                       S3Writer s3Writer,
                       Config.Table table,
-                      List<List<String>> rows,
+                      String path,
                       ReusableCountLatch finished) {
       this.s3Writer = s3Writer;
       this.replicator = s3Writer.getReplicator();
       this.table = table;
-      this.rows = rows;
+      this.path = path;
       this.finished = finished;
-      this.id = UUID.randomUUID().toString();
     }
 
     public void run() {
-      File file = new File("/tmp/" + id + ".json.gz");
+      File file = new File(path);
       try {
-        LOG.debug(String.format("writing %s", file));
-        file.deleteOnExit();
-        Writer writer =
-          new OutputStreamWriter(new GZIPOutputStream(new FileOutputStream(file)), "UTF-8");
-        ObjectMapper mapper = new ObjectMapper();
-        for (List<String> row : rows) {
-          writer.write(mapper.writeValueAsString(row));
-          writer.write("\n");
-        }
-        writer.flush();
-        writer.close();
-        rows.clear();
-        LOG.debug(String.format("closing %s", file));
+        String id = UUID.randomUUID().toString();
         String key = String.format("%s/%s.json.gz", table.name, id);
         s3Writer.getClient().putObject(replicator.getConfig().s3.bucket, key, file);
-        LOG.debug(String.format("done saving %s", key));
+        LOG.debug(String.format("done uploading %s", key));
         s3Writer.enqueueKey(table, key, finished);
       } catch (Exception e) {
         App.fatal(e);
@@ -270,4 +297,5 @@ public class S3Writer {
       }
     }
   }
+
 }

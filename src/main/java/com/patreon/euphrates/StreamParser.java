@@ -46,6 +46,7 @@ public class StreamParser {
       StringBuilder currentValue = null;
       while (reader.hasNext()) {
         int type = reader.next();
+
         switch (type) {
           case XMLStreamReader.START_ELEMENT:
             switch (reader.getLocalName()) {

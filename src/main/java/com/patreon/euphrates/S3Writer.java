@@ -158,6 +158,7 @@ public class S3Writer {
       try {
         fileWriter.write(mapper.writeValueAsString(row));
         fileWriter.write("\n");
+        App.statsd.count("rows.add", 1, String.format("table:%s", table.name));
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -168,6 +169,7 @@ public class S3Writer {
         fileWriter.flush();
         fileWriter.close();
         writer.getUploader().execute(new UploadJob(writer, table, file.getPath(), finished));
+        App.statsd.count("rows.flush", 1, String.format("table:%s", table.name));
       } catch (Exception e) {
         throw new RuntimeException(e);
       }
@@ -260,6 +262,7 @@ public class S3Writer {
               .getClient()
               .deleteObject(
                       new DeleteObjectRequest(replicator.getConfig().s3.bucket, manifestPath));
+      App.statsd.count("s3.copied", jobs.size(), String.format("table:%s", table.name));
     }
   }
 
@@ -290,6 +293,7 @@ public class S3Writer {
         s3Writer.getClient().putObject(replicator.getConfig().s3.bucket, key, file);
         LOG.debug(String.format("done uploading %s", key));
         s3Writer.enqueueKey(table, key, finished);
+        App.statsd.count("s3.uploaded", file.length(), String.format("table:%s", table.name));
       } catch (Exception e) {
         App.fatal(e);
       } finally {

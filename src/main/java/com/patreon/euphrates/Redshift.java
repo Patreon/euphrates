@@ -9,6 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
+import java.util.Map;
 
 public class Redshift {
 
@@ -17,7 +18,8 @@ public class Redshift {
   BasicDataSource connectionPool;
   Replicator replicator;
   Config config;
-  HashMap<String, Integer> tableSizes = new HashMap<>();
+  HashMap<String, Long> tableSizes = new HashMap<>();
+  HashMap<String, Long> newTableSizes = new HashMap<>();
 
   public Redshift(Replicator replicator) {
     this.replicator = replicator;
@@ -26,9 +28,9 @@ public class Redshift {
     populateTableSizes();
   }
 
-  public Integer getTableSize(String name) {
+  public Long getTableSize(String name) {
     // make default 1 so table is at least weighted
-    return tableSizes.getOrDefault(name.toLowerCase(), new Integer(1)).intValue();
+    return tableSizes.getOrDefault(name.toLowerCase(), new Long(1)).longValue();
   }
 
   public void generateTempTable(Schema schema) {
@@ -94,11 +96,16 @@ public class Redshift {
   }
 
   public void shutdown() {
+    persistTableSizes();
     try {
       connectionPool.close();
     } catch (SQLException e) {
       // do nothing
     }
+  }
+
+  public void recordTableSize(String table, long secondsTook) {
+    newTableSizes.put(table, secondsTook);
   }
 
   private void createRedshiftPool() {
@@ -119,17 +126,39 @@ public class Redshift {
 
   private void populateTableSizes() {
     try (Connection connection = connectionPool.getConnection()) {
-      try (PreparedStatement statement = connection.prepareStatement("select \"table\", size from svv_table_info where schema = ?")) {
-        statement.setString(1, config.redshift.schema);
-        ResultSet rs = statement.executeQuery();
+      connection.createStatement().execute("create table if not exists euphrates_table_timings (tablename varchar(255), secondsTook int)");
+      try (ResultSet rs = connection.createStatement().executeQuery("select tablename, secondsTook from euphrates_table_timings")) {
         while (rs.next()) {
-          tableSizes.put(rs.getString(1).toLowerCase(), rs.getInt(2));
+          tableSizes.put(rs.getString(1).toLowerCase(), rs.getLong(2));
         }
-        LOG.info(String.format("tableSizes is %s", tableSizes));
+        LOG.info(String.format("table times is %s", tableSizes));
       }
+      connection.commit();
     } catch (SQLException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private void persistTableSizes() {
+    try {
+      try (Connection connection = connectionPool.getConnection()) {
+        PreparedStatement updateStatement = connection.prepareStatement("update euphrates_table_timings set secondsTook = ? where tablename = ?");
+        PreparedStatement insertStatement = connection.prepareStatement("insert into euphrates_table_timings (secondsTook, tablename) values (?, ?)");
+
+        LOG.info(String.format("new table times is %s", newTableSizes));
+
+        for (Map.Entry<String, Long> entry : newTableSizes.entrySet()) {
+          PreparedStatement statement = tableSizes.containsKey(entry.getKey()) ? updateStatement : insertStatement;
+          statement.setLong(1, entry.getValue());
+          statement.setString(2, entry.getKey());
+          statement.execute();
+        }
+        connection.commit();
+      }
+    } catch(SQLException e) {
+      throw new RuntimeException(e);
+    }
+
   }
 }
 

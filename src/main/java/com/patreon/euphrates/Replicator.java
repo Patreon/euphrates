@@ -100,7 +100,7 @@ public class Replicator {
     }
   }
 
-  private Integer getTableSize(Config.Table table) {
+  private Long getTableSize(Config.Table table) {
     return redshift.getTableSize(table.name);
   }
 }

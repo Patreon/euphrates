@@ -4,13 +4,13 @@ import java.util.ArrayList;
 
 public class TableGroup extends ArrayList<String> {
 
-  private int sizeInMb = 0;
+  private long sizeInMb = 0;
 
-  public void incrementSizeInMb(int size) {
+  public void incrementSizeInMb(long size) {
     sizeInMb += size;
   }
 
-  public Integer getSizeInMb() {
+  public Long getSizeInMb() {
     return sizeInMb;
   }
 }

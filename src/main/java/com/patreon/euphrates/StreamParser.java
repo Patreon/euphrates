@@ -43,6 +43,7 @@ public class StreamParser {
       int columnIndex = -1;
       int valueCount = -1;
       int size = 0;
+      long startTime = 0;
       StringBuilder currentValue = null;
       while (reader.hasNext()) {
         int type = reader.next();
@@ -53,6 +54,7 @@ public class StreamParser {
                 String tableName = reader.getAttributeValue(null, "name");
                 table = replicator.getTable(tableName);
                 rows = replicator.getS3Writer().getRowEnqueuer(table, finished);
+                startTime = System.currentTimeMillis() / 1000l;
                 populateColumnMap();
                 break;
               case "field":
@@ -73,6 +75,7 @@ public class StreamParser {
             switch (reader.getLocalName()) {
               case "table_data":
                 enqueueCurrentRows();
+                replicator.getRedshift().recordTableSize(table.name, System.currentTimeMillis() / 1000l - startTime);
                 table = null;
                 break;
               case "row":

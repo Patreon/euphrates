@@ -112,6 +112,7 @@
               <classpath/>
               <argument>-XX:+HeapDumpOnOutOfMemoryError</argument>
               <argument>com.patreon.euphrates.App</argument>
+              <argument>${configFile}</argument>
             </arguments>
           </configuration>
       </plugin>

@@ -10,7 +10,7 @@ public class App {
   public static void main(String[] args) {
     Config config = null;
     try {
-      config = Config.load("config.json");
+      config = Config.load(args[0]);
     } catch (java.io.IOException ioe) {
       fatal(ioe);
     }

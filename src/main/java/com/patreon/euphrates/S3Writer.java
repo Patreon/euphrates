@@ -21,7 +21,7 @@ import java.util.zip.GZIPOutputStream;
 public class S3Writer {
 
   private static final Logger LOG = LoggerFactory.getLogger(S3Writer.class);
-  private static final int TABLE_QUEUE_SIZE = 20000;
+  private static final int TABLE_QUEUE_SIZE = 10000;
   AmazonS3 client;
   Replicator replicator;
   ThreadPoolExecutor uploader;
@@ -35,11 +35,10 @@ public class S3Writer {
     this.client =
       AmazonS3ClientBuilder.standard().withRegion(replicator.getConfig().s3.region).build();
     this.copier = Executors.newFixedThreadPool(replicator.getConfig().redshift.maxConnections);
-    int queueSize = TABLE_QUEUE_SIZE / replicator.getConfig().tables.size();
-    queueSum = queueSize * replicator.getConfig().tables.size();
+    queueSum = TABLE_QUEUE_SIZE * replicator.getConfig().tables.size();
 
     for (Config.Table table : replicator.getConfig().tables) {
-      copyQueues.put(table.name, new LinkedBlockingQueue<>(queueSize));
+      copyQueues.put(table.name, new LinkedBlockingQueue<>(TABLE_QUEUE_SIZE));
 
       // We only allow 1 copy worker at a time to be copying to a given table, so we maintain this mapping.
       tableCopyLocks.put(table.name, new ReentrantLock());

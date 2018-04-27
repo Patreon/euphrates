@@ -109,6 +109,9 @@ public class StreamParser {
         }
       }
       flush();
+    } catch (com.ctc.wstx.exc.WstxIOException wioe) {
+      LOG.error(String.format("error while parsing: %s", table != null ? table.name : "no table"));
+      throw new RuntimeException(wioe);
     } catch (XMLStreamException e) {
       throw new RuntimeException(e);
     }

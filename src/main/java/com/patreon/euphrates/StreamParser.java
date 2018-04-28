@@ -27,9 +27,12 @@ public class StreamParser {
   ReusableCountLatch finished = new ReusableCountLatch();
   S3Writer.RowEnqueuer rows = null;
   int rowIndex = 0;
+  int tableCount = 0;
+  List<String> tableNames;
 
-  public StreamParser(Replicator replicator) {
+  public StreamParser(Replicator replicator, List<String> tableNames) {
     this.replicator = replicator;
+    this.tableNames = tableNames;
   }
 
   public void parse(InputStream is) {
@@ -77,6 +80,10 @@ public class StreamParser {
                 enqueueCurrentRows();
                 replicator.getRedshift().recordTableSize(table.name, System.currentTimeMillis() / 1000l - startTime);
                 table = null;
+                tableCount++;
+                if (tableCount == tableNames.size()) {
+                  reader.close();
+                }
                 break;
               case "row":
                 rows.add(currentRow);

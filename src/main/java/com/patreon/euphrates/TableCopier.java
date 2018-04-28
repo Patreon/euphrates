@@ -65,7 +65,7 @@ class TableCopier implements Runnable {
           .redirectOutput(ProcessBuilder.Redirect.PIPE)
           .start();
 
-      StreamParser parser = new StreamParser(replicator);
+      StreamParser parser = new StreamParser(replicator, tableNames);
       parser.parse(new ScrubbingInputStream(dumpProcess.getInputStream()));
       long elapsed = Clock.systemUTC().millis() - startTime;
       LOG.info(String.format("Done copying tables %s in %s seconds", tableNames, elapsed / 1000));

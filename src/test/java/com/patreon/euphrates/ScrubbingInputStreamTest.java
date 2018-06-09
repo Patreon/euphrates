@@ -44,4 +44,16 @@ public class ScrubbingInputStreamTest extends TestCase {
     assertArrayEquals(new byte[]{9, 10, 13}, output);
   }
 
+  public void testLargeInputScrubbing() throws Exception {
+    byte[] in = new byte[1024 * 1024 * 3];
+    for (int i = 0; i != in.length; i+=6) {
+      System.arraycopy(new byte[]{123, -17, -65, -65, 123, 123}, 0, in, i, 6);
+    }
+
+    ByteArrayInputStream bin = new ByteArrayInputStream(in);
+    ScrubbingInputStream sis = new ScrubbingInputStream(bin);
+    byte[] output = IOUtils.toByteArray(sis);
+    assertEquals(1_572_864, output.length);
+  }
+
 }

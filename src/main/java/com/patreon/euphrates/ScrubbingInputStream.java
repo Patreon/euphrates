@@ -16,18 +16,21 @@ import java.nio.charset.CodingErrorAction;
 public class ScrubbingInputStream extends FilterInputStream {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScrubbingInputStream.class);
+
+  private static final int BUFFER_SIZE = 16_384;
+
   CharsetDecoder decoder = Charset.forName("UTF-8").newDecoder();
   CharsetEncoder encoder = Charset.forName("UTF-8").newEncoder();
-  byte[] readBuffer = new byte[4096];
+  byte[] readBuffer = new byte[BUFFER_SIZE];
   CharBuffer charBuffer, goodCharBuffer;
   ByteBuffer byteBuffer;
 
   public ScrubbingInputStream(InputStream in) {
     super(in);
     decoder.onMalformedInput(CodingErrorAction.IGNORE);
-    byteBuffer = ByteBuffer.allocate(4096);
-    charBuffer = CharBuffer.allocate(4096);
-    goodCharBuffer = CharBuffer.allocate(4096);
+    byteBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+    charBuffer = CharBuffer.allocate(BUFFER_SIZE);
+    goodCharBuffer = CharBuffer.allocate(BUFFER_SIZE);
     byteBuffer.limit(0);
   }
 

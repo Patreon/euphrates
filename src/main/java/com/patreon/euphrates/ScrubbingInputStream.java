@@ -6,90 +6,91 @@ import org.slf4j.LoggerFactory;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CodingErrorAction;
 
 public class ScrubbingInputStream extends FilterInputStream {
 
-  private static final Logger LOG = LoggerFactory.getLogger(Replicator.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ScrubbingInputStream.class);
+
+  private static final int BUFFER_SIZE = 16_384;
+
+  CharsetDecoder decoder = Charset.forName("UTF-8").newDecoder();
+  CharsetEncoder encoder = Charset.forName("UTF-8").newEncoder();
+  byte[] readBuffer = new byte[BUFFER_SIZE];
+  CharBuffer charBuffer, goodCharBuffer;
+  ByteBuffer byteBuffer;
 
   public ScrubbingInputStream(InputStream in) {
     super(in);
+    decoder.onMalformedInput(CodingErrorAction.IGNORE);
+    byteBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+    charBuffer = CharBuffer.allocate(BUFFER_SIZE);
+    goodCharBuffer = CharBuffer.allocate(BUFFER_SIZE);
+    byteBuffer.limit(0);
   }
 
   @Override
   public int read() throws IOException {
-    int b = in.read();
-    return charValid(b) ? b : read();
+    fillBuffer();
+
+    if (!byteBuffer.hasRemaining()) return -1;
+    int b = (int)byteBuffer.get();
+    return b;
   }
 
   @Override
   public int read(byte[] b, int off, int len) throws IOException {
-    int r = in.read(b, off, len);
-    if (r > 0) {
-      int lastChar = off;
-      // scan all chars
-      for (int pos = off; pos < off + r; pos++) {
-        // if invalid
-        if (!charValid(b[pos])) {
-          // find the next valid one
-          for (int nextValid = pos + 1; nextValid < off + r; nextValid++) {
-            // and swapem!
-            if (charValid(b[nextValid])) {
-              byte cc = b[nextValid];
-              b[nextValid] = b[pos];
-              b[pos] = cc;
-              lastChar = pos;
-              break;
-            }
-          }
-        } else {
-          lastChar = pos;
-        }
-      }
-      r += lastChar - (off + r - 1);
+    fillBuffer();
+    if (!byteBuffer.hasRemaining()) {
+      return -1;
     }
-    return r;
+
+    int maxAvailableLength = Math.min(byteBuffer.remaining(), len);
+    byteBuffer.get(b, off, maxAvailableLength);
+    return maxAvailableLength;
   }
 
-  private boolean charValid(int c) {
-    switch (c) {
-      // these characters are forbidden by xml 1.0 which is what mysqldump produces,
-      // however, stream itself is not xml 1.0 compliant, thus, remove control characters
-      // except for the printable ones
-      case 0x0:
-      case 0x1:
-      case 0x2:
-      case 0x3:
-      case 0x4:
-      case 0x5:
-      case 0x6:
-      case 0x7:
-      case 0x8:
-        //case 0x9: tab      \t
-        //case 0xa: new line \n
-      case 0xb:
-      case 0xc:
-        // case 0xd: cr      \r
-      case 0xe:
-      case 0xf:
-      case 0x10:
-      case 0x11:
-      case 0x12:
-      case 0x13:
-      case 0x14:
-      case 0x15:
-      case 0x16:
-      case 0x17:
-      case 0x18:
-      case 0x19:
-      case 0x1a:
-      case 0x1b:
-      case 0x1c:
-      case 0x1d:
-      case 0x1e:
-      case 0x1f:
-        return false;
-      default:
-        return true;
+  private void fillBuffer() throws IOException {
+    if (byteBuffer.hasRemaining()) {
+      return;
     }
+
+    int bytesRead = in.read(readBuffer);
+    boolean eof = bytesRead == -1;
+
+    ByteBuffer bytesIn = ByteBuffer.wrap(readBuffer, 0, eof ? 0 : bytesRead);
+    decoder.decode(bytesIn, charBuffer, eof);
+    if (eof) decoder.flush(charBuffer);
+
+    charBuffer.flip();
+
+    while (charBuffer.hasRemaining()) {
+      char c = charBuffer.get();
+      if (isPrintableChar(c)) {
+        goodCharBuffer.put(c);
+      }
+    }
+    charBuffer.compact();
+
+    goodCharBuffer.flip();
+    byteBuffer.clear();
+    encoder.encode(goodCharBuffer, byteBuffer, eof);
+    if (eof) encoder.flush(byteBuffer);
+
+    byteBuffer.flip();
+    goodCharBuffer.compact();
   }
+
+  public boolean isPrintableChar( char c ) {
+    Character.UnicodeBlock block = Character.UnicodeBlock.of( c );
+    return (!Character.isISOControl(c) || c == '\n' || c == '\t' || c == '\r') &&
+             block != null &&
+             block != Character.UnicodeBlock.SPECIALS;
+  }
+
 }

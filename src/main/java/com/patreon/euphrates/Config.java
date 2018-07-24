@@ -115,7 +115,7 @@ public class Config {
     public S3(
                @JsonProperty("bucket") String bucket,
                @JsonProperty("region") String region,
-               @JsonProperty("accessKey") String iamRole,
+               @JsonProperty("iamRole") String iamRole,
                @JsonProperty("accessKey") String accessKey,
                @JsonProperty("secretKey") String secretKey,
                @JsonProperty("minimumSegmentSize") int minimumSegmentSize) {

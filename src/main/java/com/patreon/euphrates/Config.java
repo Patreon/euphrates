@@ -105,22 +105,19 @@ public class Config {
 
   public static class S3 {
     final public String bucket;
+    final public String iamRole;
     final public String region;
-    final public String accessKey;
-    final public String secretKey;
     final public int minimumSegmentSize;
 
     @JsonCreator
     public S3(
                @JsonProperty("bucket") String bucket,
                @JsonProperty("region") String region,
-               @JsonProperty("accessKey") String accessKey,
-               @JsonProperty("secretKey") String secretKey,
+               @JsonProperty("iamRole") String iamRole,
                @JsonProperty("minimumSegmentSize") int minimumSegmentSize) {
       this.bucket = bucket;
+      this.iamRole = iamRole;
       this.region = region;
-      this.accessKey = accessKey;
-      this.secretKey = secretKey;
       this.minimumSegmentSize = minimumSegmentSize;
     }
   }

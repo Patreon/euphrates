@@ -53,8 +53,7 @@ Create a valid config.json and run using `mvn exec:exec`.
   "s3": {
     "bucket": "some-transfer-bucket",
     "region": "us-east-1",
-    "accessKey": "xxx",
-    "secretKey": "xxx",
+    "iamRole": "arn:aws:iam::XXXXX:role/euphrates",
     "minimumSegmentSize": 20000000
   }
 }

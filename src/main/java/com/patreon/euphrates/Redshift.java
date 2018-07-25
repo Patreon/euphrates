@@ -55,9 +55,8 @@ public class Redshift {
         String.format("COPY %s.%s\n", config.redshift.schema, Util.tempTable(table))
           + String.format("FROM 's3://%s/%s'\n", config.s3.bucket, manifestPath)
           + String.format(
-          "CREDENTIALS 'aws_access_key_id=%s;aws_secret_access_key=%s'\n",
-          config.s3.accessKey,
-          config.s3.secretKey)
+          "IAM_ROLE '%s'\n",
+          config.s3.iamRole)
           + String.format(
           "json 's3://%s/%s' gzip TIMEFORMAT AS 'auto' ACCEPTANYDATE TRUNCATECOLUMNS MANIFEST",
           config.s3.bucket,

@@ -64,7 +64,7 @@ public class S3Writer {
 
   protected void enqueueKey(Config.Table table, String key, ReusableCountLatch finished) {
     CopyJob job = new CopyJob(table, key, finished);
-    this.copyQueues.get(table.name).add(job);
+    this.copyQueues.get(table.name).offer(job);
   }
 
   protected int getCopyQueueSum() {

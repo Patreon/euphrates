@@ -1,11 +1,11 @@
 package com.patreon.euphrates;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 public class App {
 
-  private static final Logger LOG = LoggerFactory.getLogger(App.class);
+  private static final Logger LOG = LogManager.getLogger(App.class);
 
   public static void main(String[] args) {
     Config config = null;

@@ -1,8 +1,5 @@
 package com.patreon.euphrates;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,8 +11,6 @@ import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CodingErrorAction;
 
 public class ScrubbingInputStream extends FilterInputStream {
-
-  private static final Logger LOG = LoggerFactory.getLogger(ScrubbingInputStream.class);
 
   private static final int BUFFER_SIZE = 16_384;
 

@@ -3,8 +3,8 @@ package com.patreon.euphrates;
 import javafixes.concurrency.ReusableCountLatch;
 import org.codehaus.stax2.XMLInputFactory2;
 import org.codehaus.stax2.XMLStreamReader2;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamException;
@@ -18,7 +18,7 @@ import java.util.concurrent.CountDownLatch;
 
 public class StreamParser {
 
-  private static final Logger LOG = LoggerFactory.getLogger(StreamParser.class);
+  private static final Logger LOG = LogManager.getLogger(StreamParser.class);
 
   Replicator replicator;
   Config.Table table;

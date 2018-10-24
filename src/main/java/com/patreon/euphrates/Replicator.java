@@ -1,7 +1,7 @@
 package com.patreon.euphrates;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 
 public class Replicator {
 
-  private static final Logger LOG = LoggerFactory.getLogger(Replicator.class);
+  private static final Logger LOG = LogManager.getLogger(Replicator.class);
 
   Config config;
   S3Writer s3Writer;

@@ -1,8 +1,8 @@
 package com.patreon.euphrates;
 
 import org.apache.commons.dbcp2.BasicDataSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -13,7 +13,7 @@ import java.util.Map;
 
 public class Redshift {
 
-  private static final Logger LOG = LoggerFactory.getLogger(Redshift.class);
+  private static final Logger LOG = LogManager.getLogger(Redshift.class);
 
   BasicDataSource connectionPool;
   Replicator replicator;

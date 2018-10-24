@@ -6,8 +6,8 @@ import com.amazonaws.services.s3.model.DeleteObjectRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafixes.concurrency.ReusableCountLatch;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -20,7 +20,7 @@ import java.util.zip.GZIPOutputStream;
 
 public class S3Writer {
 
-  private static final Logger LOG = LoggerFactory.getLogger(S3Writer.class);
+  private static final Logger LOG = LogManager.getLogger(S3Writer.class);
   private static final int TABLE_QUEUE_SIZE = 40000;
   AmazonS3 client;
   Replicator replicator;

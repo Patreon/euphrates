@@ -59,6 +59,7 @@ class TableCopier implements Runnable {
 
       LOG.info(String.format("Running a mysqldump for %s", dumpargs));
 
+      // TODO feed stderr to a logger via redirectError so we catch errors from mysqldump
       Process dumpProcess =
         new ProcessBuilder(dumpargs)
           .redirectError(ProcessBuilder.Redirect.INHERIT)

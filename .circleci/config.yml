@@ -55,13 +55,13 @@ jobs:
         at: /tmp/workspace
 
     - deploy:
-        command: "aws s3 cp /tmp/workspace/target/com-patreon-euphrates-*.jar s3://${BUCKET}/euphrates/branch/${CIRCLE_BRANCH}/euphrates-latest.jar"
+        command: "aws s3 cp /tmp/workspace/target/euphrates-*.jar s3://${BUCKET}/euphrates/branch/${CIRCLE_BRANCH}/euphrates-latest.jar"
 
     - deploy:
-        command: "aws s3 cp /tmp/workspace/target/com-patreon-euphrates-*.jar s3://${BUCKET}/euphrates/branch/${CIRCLE_BRANCH}/"
+        command: "aws s3 cp /tmp/workspace/target/euphrates-*.jar s3://${BUCKET}/euphrates/branch/${CIRCLE_BRANCH}/"
 
     - deploy:
-        command: "aws s3 cp /tmp/workspace/target/com-patreon-euphrates-*.jar s3://${BUCKET}/euphrates/sha/"
+        command: "aws s3 cp /tmp/workspace/target/euphrates-*.jar s3://${BUCKET}/euphrates/sha/"
 
 workflows:
   version: 2

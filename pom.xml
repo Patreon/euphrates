@@ -7,7 +7,7 @@
     <version>1.0</version>
     <packaging>jar</packaging>
 
-    <name>com-patreon-euphrates</name>
+    <name>euphrates</name>
     <url>http://maven.apache.org</url>
 
     <properties>

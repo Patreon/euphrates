@@ -1,0 +1,30 @@
+---
+Configuration:
+  status: warn
+  name: Euphrates
+  properties:
+    property:
+      name: euphratesLog
+      value: euphrates.log
+  thresholdFilter:
+    level: debug
+  appenders:
+    File:
+      name: File
+      fileName: ${sys:euphratesLog}
+      PatternLayout:
+        Pattern: "[%-5p] %d %c - %m%n"
+      Filters:
+        ThresholdFilter:
+          level: debug
+  Loggers:
+    logger:
+      - name: com.patreon.euphrates
+        level: debug
+        additivity: false
+        AppenderRef:
+          ref: File
+    Root:
+      level: warn
+      AppenderRef:
+        ref: File

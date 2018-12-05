@@ -78,12 +78,12 @@ public class Redshift {
           .createStatement()
           .execute(
             String.format(
-              "drop table if exists %s.%s CASCADE", config.redshift.schema, table.name));
+              "drop table if exists %s.aurora_%s CASCADE", config.redshift.schema, table.name));
         connection
           .createStatement()
           .execute(
             String.format(
-              "alter table %s.%s rename to %s",
+              "alter table %s.%s rename to aurora_%s",
               config.redshift.schema,
               Util.tempTable(table),
               table.name));
